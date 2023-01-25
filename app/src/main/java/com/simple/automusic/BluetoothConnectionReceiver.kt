@@ -4,12 +4,17 @@ import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.spotify.android.appremote.api.ConnectionParams
 import com.spotify.android.appremote.api.Connector
 import com.spotify.android.appremote.api.SpotifyAppRemote
+import com.spotify.sdk.android.auth.AuthorizationClient
+import com.spotify.sdk.android.auth.AuthorizationRequest
+import com.spotify.sdk.android.auth.AuthorizationResponse
+import com.spotify.sdk.android.auth.LoginActivity.REQUEST_CODE
 
 class BluetoothConnectionReceiver : BroadcastReceiver() {
     val TAG = "BluetoothConnectionReceiver"
@@ -20,18 +25,16 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
         Log.d(TAG, action.toString())
-        val sp = context.getSharedPreferences("chosen_device", AppCompatActivity.MODE_PRIVATE)
-
-
-        Log.d(TAG, sp.getString("first_param", "default_paramm").toString())
+        val sp = context.getSharedPreferences("chosen_devices", AppCompatActivity.MODE_PRIVATE)
 
         if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
             // Bluetooth device connected
             val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
 
             if (device != null) {
-                if (device.name == "Mi True Wireless EBs Basic 2") {
-
+                if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(device.address)) {
+                    val mediaPlayer = MediaPlayer.create(context, R.raw.jarvis_merhaba)
+                    mediaPlayer.start()
                     SpotifyAppRemote.connect(context,
                         ConnectionParams.Builder(CLIENT_ID)
                             .setRedirectUri(REDIRECT_URI)
@@ -40,8 +43,6 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                         object : Connector.ConnectionListener {
                             override fun onConnected(spotifyAppRemote: SpotifyAppRemote) {
                                 mSpotifyAppRemote = spotifyAppRemote
-                                Log.d(TAG, "Connected! Yay!")
-
                                 // Now you can start interacting with App Remote
                                 mSpotifyAppRemote!!.playerApi.play("spotify:user:anonymised:collection")
                             }
@@ -55,7 +56,6 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                 }
                 Log.v(TAG, device.name)
             }
-
         }
     }
 }

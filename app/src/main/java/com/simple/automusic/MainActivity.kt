@@ -1,22 +1,19 @@
 package com.simple.automusic
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
-import android.widget.Button
-import android.widget.Toast
+import android.view.View
+import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import com.spotify.android.appremote.api.ConnectionParams
-import com.spotify.android.appremote.api.Connector
 import com.spotify.android.appremote.api.SpotifyAppRemote
-import com.spotify.protocol.types.PlayerState
-import com.spotify.protocol.types.Track
 import com.spotify.sdk.android.auth.AuthorizationClient
 import com.spotify.sdk.android.auth.AuthorizationRequest
 import com.spotify.sdk.android.auth.AuthorizationResponse
@@ -33,45 +30,88 @@ class MainActivity : AppCompatActivity() {
     lateinit var receiver: BluetoothConnectionReceiver
     var TAG = "MainActivityBluetooth"
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val sp = getSharedPreferences("chosen_device", MODE_PRIVATE)
-
         // Permission requests
         requestPermissions()
+
+        // Get shared preferences
+        val sp = getSharedPreferences("chosen_devices", MODE_PRIVATE)
 
         // Set Spotify to debug mode and authorize
         SpotifyAppRemote.setDebugMode(true)
         Log.v(TAG, "Debug mode on for SpotifyAppRemote")
 
-        // Play song button
-        val btnPlaySong = findViewById<Button>(R.id.buttonPlaySong)
-        btnPlaySong.setOnClickListener {
-            if (sp.getString("first_param", "default_param") == "default_param") {
-                sp.edit().putString("first_param", "second_param").apply()
-            }
-        }
+        // Setting broadcast receiver
+        receiver = BluetoothConnectionReceiver()
+        val filter = IntentFilter()
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        registerReceiver(receiver, filter)
+        Log.v(TAG, "receiver registered")
 
-        // Authorize button
-        val btnOpenSpotify = findViewById<Button>(R.id.buttonOpenSpotify)
-        btnOpenSpotify.setOnClickListener {
-            Log.d(TAG, "clicked on authorize")
+
+        // Getting paired devices
+        val mDeviceGroup = findViewById<LinearLayout>(R.id.device_group)
+        val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+
+        if (mBluetoothAdapter.isEnabled) {
+            for (i in mBluetoothAdapter.bondedDevices) {
+                val mDevice = CheckBox(this)
+                mDevice.id = View.generateViewId()
+                mDevice.text = i.name
+                if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(i.address)) {
+                    mDevice.isChecked = true
+                }
+                mDevice.setOnClickListener {
+                    if (mDevice.isChecked()) {
+                        with(sp.edit()) {
+                            val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
+                            newSet?.add(i.address)
+                            Log.v(TAG, newSet.toString())
+                            putStringSet("mac-list", newSet)
+                            apply()
+                        }
+                    } else {
+                        with (sp.edit()) {
+                            val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
+                            newSet?.remove(i.address)
+                            Log.v(TAG, newSet.toString())
+                            putStringSet("mac-list", newSet)
+                            apply()
+                        }
+                    }
+                }
+                mDeviceGroup.addView(mDevice)
+            }
+        } else {
+            val alertDialogBuilder = AlertDialog.Builder(this)
+            alertDialogBuilder.setTitle("Bluetooth Off")
+            alertDialogBuilder.setMessage("Please turn on Bluetooth and restart the app")
+            alertDialogBuilder.setNegativeButton("QUIT") { dialog , which ->
+                System.exit(-1)
+            }
+            alertDialogBuilder.show()
+        }
+    }
+
+
+    override fun onStart() {
+        super.onStart()
+
+        // Get shared preferences
+        val sp = getSharedPreferences("chosen_device", MODE_PRIVATE)
+
+        // Authorize Spotify
+        if (sp.getBoolean("spotify-authorized", false)) {
             val builder = AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI)
                 .setScopes(Array(1) {"user-read-private"})
             val request = builder.build()
             AuthorizationClient.openLoginActivity(this, REQUEST_CODE, request)
-//            unregisterReceiver(receiver)
         }
-
-        // Setting broadcast receiver
-//        receiver = BluetoothConnectionReceiver()
-//        val filter = IntentFilter()
-//        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
-//        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-//        registerReceiver(receiver, filter)
-//        Log.v(TAG, "receiver registered")
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -79,11 +119,14 @@ class MainActivity : AppCompatActivity() {
         Log.v(TAG, "onActivityResult")
         val response = AuthorizationClient.getResponse(resultCode, data)
 
+        // Get shared preferences
+        val sp = getSharedPreferences("chosen_device", MODE_PRIVATE)
+
         when (response.type) {
             AuthorizationResponse.Type.TOKEN -> {
                 Log.v(TAG, response.accessToken.toString())
                 Toast.makeText(this, response.accessToken.toString(), Toast.LENGTH_LONG).show()
-
+                sp.edit().putBoolean("spotify-authorized", true).apply()
             }
             AuthorizationResponse.Type.ERROR -> {
                 Log.v(TAG, response.error.toString())
@@ -95,20 +138,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onStop() {
-        super.onStop()
-        Log.v(TAG, "onStop")
-    }
+
 
     override fun onDestroy() {
         super.onDestroy()
         SpotifyAppRemote.disconnect(mSpotifyAppRemote)
-    }
-
-    private fun connected() {
-        // Subscribe to PlayerState
-        mSpotifyAppRemote!!.playerApi.play("spotify:user:anonymised:collection")
-        Log.d(TAG, "connected")
     }
 
     private fun hasBluetoothConnectionPermission() =

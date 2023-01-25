@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">AutoMusic</string>
+    <string name="spotify">Spotify</string>
+    <string name="youtube_music">Youtube Music</string>
 </resources>
