@@ -6,15 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
 import android.util.Log
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.spotify.android.appremote.api.ConnectionParams
 import com.spotify.android.appremote.api.Connector
 import com.spotify.android.appremote.api.SpotifyAppRemote
-import com.spotify.sdk.android.auth.AuthorizationClient
-import com.spotify.sdk.android.auth.AuthorizationRequest
-import com.spotify.sdk.android.auth.AuthorizationResponse
-import com.spotify.sdk.android.auth.LoginActivity.REQUEST_CODE
 
 class BluetoothConnectionReceiver : BroadcastReceiver() {
     val TAG = "BluetoothConnectionReceiver"
@@ -34,6 +29,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
             if (device != null) {
                 if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(device.address)) {
                     val mediaPlayer = MediaPlayer.create(context, R.raw.jarvis_merhaba)
+                    Thread.sleep(sp.getInt("delay_time", 3000).toLong())
                     mediaPlayer.start()
                     SpotifyAppRemote.connect(context,
                         ConnectionParams.Builder(CLIENT_ID)
@@ -43,8 +39,26 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                         object : Connector.ConnectionListener {
                             override fun onConnected(spotifyAppRemote: SpotifyAppRemote) {
                                 mSpotifyAppRemote = spotifyAppRemote
-                                // Now you can start interacting with App Remote
-                                mSpotifyAppRemote!!.playerApi.play("spotify:user:anonymised:collection")
+                                val mPlayerApi = mSpotifyAppRemote?.playerApi
+                                if (sp.getBoolean("start_player_state", false)) {
+                                    mPlayerApi?.playerState?.setResultCallback {
+                                        if (it.isPaused)
+                                            mPlayerApi.resume()
+                                    }
+                                } else if (sp.getBoolean("start_favorites", false)) {
+                                    Log.d(TAG, sp.getBoolean("start_favorites", false).toString())
+                                    mPlayerApi?.play("spotify:user:anonymised:collection")
+                                } else {
+                                    Log.d(TAG, sp.getString("start_link", "NO_VALUE").toString())
+                                    mPlayerApi?.play(sp.getString("start_link", "spotify:user:anonymised:collection"))
+                                }
+
+                                if (sp.getBoolean("shuffle", false)) {
+                                    mPlayerApi?.setShuffle(true)
+                                } else {
+                                    mPlayerApi?.setShuffle(false)
+                                }
+
                             }
 
                             // Something went wrong when attempting to connect! Handle errors here

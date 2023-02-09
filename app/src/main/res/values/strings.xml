@@ -2,4 +2,9 @@
     <string name="app_name">AutoMusic</string>
     <string name="spotify">Spotify</string>
     <string name="youtube_music">Youtube Music</string>
+    <string name="start_link">https://open.spotify.com/playlist/0vvXsWCC9xrXsKd4FyS8kM?si=c5d2f8e20fae49a8</string>
+    <string name="start_from_favorites">Start from favorites</string>
+    <string name="resume_where_i_left_off">Resume where I left off</string>
+    <string name="shuffle">Shuffle</string>
+    <string name="authorize_spotify">Authorize Spotify</string>
 </resources>
