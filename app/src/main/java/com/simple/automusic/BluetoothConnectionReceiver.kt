@@ -67,6 +67,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                     )
                 }
                 Log.v(TAG, device.name)
+                SpotifyAppRemote.disconnect(mSpotifyAppRemote)
             }
         }
     }
