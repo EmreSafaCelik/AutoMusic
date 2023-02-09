@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         val autoLaunchForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             setBatteryOptimizations()
         }
-        fun setAutomaticLaunchSettings(launchForResult: ActivityResultLauncher<Intent>) {
+        fun setAutomaticLaunchSettings() {
             var intent = packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
                 val componentName = intent.component
@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
                                 intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                     data = Uri.parse("package:$packageName")
                                 }
-                                launchForResult.launch(intent)
+                                autoLaunchForResult.launch(intent)
                             }
                     } else {
                         alertDialogBuilder.setTitle("Quick Launch Not Allowed")
@@ -161,7 +161,7 @@ class MainActivity : AppCompatActivity() {
                                     Intent(Settings.ACTION_QUICK_LAUNCH_SETTINGS).apply {
                                         putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
                                     }
-                                launchForResult.launch(intent)
+                                autoLaunchForResult.launch(intent)
                             }
                     }
                     alertDialogBuilder.show()
@@ -179,12 +179,12 @@ class MainActivity : AppCompatActivity() {
                     AuthorizationResponse.Type.TOKEN -> {
                         Log.v(TAG, response.accessToken.toString())
                         Toast.makeText(this, "Authorization successful", Toast.LENGTH_LONG).show()
-                        setAutomaticLaunchSettings(autoLaunchForResult)
+                        setAutomaticLaunchSettings()
                         sp.edit().putBoolean("spotify-authorized", true).apply()
                     }
                     AuthorizationResponse.Type.ERROR -> {
                         Log.d(TAG, response.error.toString())
-                        setAutomaticLaunchSettings(autoLaunchForResult)
+                        setAutomaticLaunchSettings()
                         Toast.makeText(this, "something is wrong in authorization", Toast.LENGTH_LONG).show()
                     }
                     else -> {
