@@ -13,24 +13,33 @@ import com.spotify.android.appremote.api.SpotifyAppRemote
 
 class BluetoothConnectionReceiver : BroadcastReceiver() {
     val TAG = "BluetoothConnectionReceiver"
+
+    // Constants for SpotifyAppRemote
     val CLIENT_ID = "1b5bee9d082c45169e7237ee529fb691"
     val REDIRECT_URI = "com.simple.automusic://auth"
     private var mSpotifyAppRemote: SpotifyAppRemote? = null
 
     override fun onReceive(context: Context, intent: Intent) {
+        // action is ACL_CONNECTED or ACL_DISCONNECTED
         val action = intent.action
         Log.d(TAG, action.toString())
+
         val sp = context.getSharedPreferences("preferences", AppCompatActivity.MODE_PRIVATE)
 
+        // Bluetooth device connected
         if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
-            // Bluetooth device connected
             val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
 
             if (device != null) {
                 if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(device.address)) {
-                    val mediaPlayer = MediaPlayer.create(context, R.raw.jarvis_merhaba)
+                    // Wait specified amount by user
                     Thread.sleep(sp.getInt("delay_time", 3000).toLong())
+
+                    // Play set audio
+                    val mediaPlayer = MediaPlayer.create(context, R.raw.jarvis_merhaba)
                     mediaPlayer.start()
+
+                    // Connect to spotify and play as chosen by user
                     SpotifyAppRemote.connect(context,
                         ConnectionParams.Builder(CLIENT_ID)
                             .setRedirectUri(REDIRECT_URI)
@@ -40,21 +49,21 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                             override fun onConnected(spotifyAppRemote: SpotifyAppRemote) {
                                 mSpotifyAppRemote = spotifyAppRemote
                                 val mPlayerApi = mSpotifyAppRemote?.playerApi
+
                                 if (sp.getBoolean("shuffle", false)) {
                                     mPlayerApi?.setShuffle(true)
                                 } else {
                                     mPlayerApi?.setShuffle(false)
                                 }
+
                                 if (sp.getBoolean("start_player_state", false)) {
-                                    mPlayerApi?.playerState?.setResultCallback {
-                                        if (it.isPaused)
+                                    mPlayerApi?.playerState?.setResultCallback { playerState ->
+                                        if (playerState.isPaused)
                                             mPlayerApi.resume()
                                     }
                                 } else if (sp.getBoolean("start_favorites", false)) {
-                                    Log.d(TAG, sp.getBoolean("start_favorites", false).toString())
                                     mPlayerApi?.play("spotify:user:anonymised:collection")
                                 } else {
-                                    Log.d(TAG, sp.getString("start_link", "NO_VALUE").toString())
                                     mPlayerApi?.play(sp.getString("start_link", "spotify:user:anonymised:collection"))
                                 }
                             }
@@ -66,7 +75,6 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                         }
                     )
                 }
-                Log.v(TAG, device.name)
                 SpotifyAppRemote.disconnect(mSpotifyAppRemote)
             }
         }
