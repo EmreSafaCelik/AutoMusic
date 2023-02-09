@@ -7,7 +7,7 @@
     android:layout_height="match_parent">
 
     <Button
-        android:id="@+id/authorize_spotify"
+        android:id="@+id/troubleshoot_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/authorize_spotify"

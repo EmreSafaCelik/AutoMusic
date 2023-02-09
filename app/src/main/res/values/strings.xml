@@ -6,5 +6,5 @@
     <string name="start_from_favorites">Start from favorites</string>
     <string name="resume_where_i_left_off">Resume where I left off</string>
     <string name="shuffle">Shuffle</string>
-    <string name="authorize_spotify">Authorize Spotify</string>
+    <string name="authorize_spotify">Troubleshoot</string>
 </resources>

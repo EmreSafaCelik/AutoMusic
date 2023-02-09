@@ -20,7 +20,7 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
         Log.d(TAG, action.toString())
-        val sp = context.getSharedPreferences("chosen_devices", AppCompatActivity.MODE_PRIVATE)
+        val sp = context.getSharedPreferences("preferences", AppCompatActivity.MODE_PRIVATE)
 
         if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
             // Bluetooth device connected
@@ -40,6 +40,11 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                             override fun onConnected(spotifyAppRemote: SpotifyAppRemote) {
                                 mSpotifyAppRemote = spotifyAppRemote
                                 val mPlayerApi = mSpotifyAppRemote?.playerApi
+                                if (sp.getBoolean("shuffle", false)) {
+                                    mPlayerApi?.setShuffle(true)
+                                } else {
+                                    mPlayerApi?.setShuffle(false)
+                                }
                                 if (sp.getBoolean("start_player_state", false)) {
                                     mPlayerApi?.playerState?.setResultCallback {
                                         if (it.isPaused)
@@ -52,13 +57,6 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                                     Log.d(TAG, sp.getString("start_link", "NO_VALUE").toString())
                                     mPlayerApi?.play(sp.getString("start_link", "spotify:user:anonymised:collection"))
                                 }
-
-                                if (sp.getBoolean("shuffle", false)) {
-                                    mPlayerApi?.setShuffle(true)
-                                } else {
-                                    mPlayerApi?.setShuffle(false)
-                                }
-
                             }
 
                             // Something went wrong when attempting to connect! Handle errors here

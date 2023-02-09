@@ -1,11 +1,13 @@
 package com.simple.automusic
 
 import android.Manifest
+import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -14,6 +16,9 @@ import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.*
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -21,97 +26,194 @@ import com.spotify.android.appremote.api.SpotifyAppRemote
 import com.spotify.sdk.android.auth.AuthorizationClient
 import com.spotify.sdk.android.auth.AuthorizationRequest
 import com.spotify.sdk.android.auth.AuthorizationResponse
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
     // Set variables for SpotifySDK
-    val REQUEST_CODE = 1337
     val CLIENT_ID = "1b5bee9d082c45169e7237ee529fb691"
     val REDIRECT_URI = "com.simple.automusic://auth"
     private var mSpotifyAppRemote: SpotifyAppRemote? = null
 
     // Set Log tag and BroadcastReceiver
     lateinit var receiver: BluetoothConnectionReceiver
-    var TAG = "MainActivityBluetooth"
-
-    // Checks and sets battery optimizations
-    fun setBatteryOptimizations() {
-        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
-            // Already whitelisted
-        } else {
-            // Give an alert to prompt user to set battery optimizations
-            val alertDialogBuilder = AlertDialog.Builder(this)
-            alertDialogBuilder.setCancelable(false)
-            alertDialogBuilder.setTitle("Battery Optimizations Not Set")
-            alertDialogBuilder.setMessage("Please turn off Battery Optimizations")
-            alertDialogBuilder.setPositiveButton("DO IT") { dialog , which ->
-                val intent =
-                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                startActivity(intent)
-            }
-            alertDialogBuilder.show()
-        }
-    }
-
-    // Cheks and sets automatic launch approval
-    fun setAutomaticLaunchSettings() {
-        var intent = packageManager.getLaunchIntentForPackage(packageName)
-        if (intent != null) {
-            val componentName = intent.component
-            val state = packageManager.getComponentEnabledSetting(componentName!!)
-            Log.v(TAG, componentName.toString())
-            if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
-                // Automatic launch is already authorized
-            } else {
-                // Automatic launch is unauthorized
-                val alertDialogBuilder = AlertDialog.Builder(this)
-                alertDialogBuilder.setCancelable(false)
-                alertDialogBuilder.setMessage("Please turn on quick/automatic launch")
-                val resolveInfo = packageManager.resolveActivity(Intent(Settings.ACTION_QUICK_LAUNCH_SETTINGS), 0)
-                Log.v(TAG, resolveInfo.toString())
-                if (resolveInfo == null) {
-                    alertDialogBuilder.setTitle("Automatic Launch Not Allowed")
-                    alertDialogBuilder.setPositiveButton("DO IT") { dialog , which ->
-                        intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                            data = Uri.parse("package:$packageName")
-                        }
-                        startActivity(intent)
-                    }
-                    alertDialogBuilder.show()
-                } else {
-                    alertDialogBuilder.setTitle("Quick Launch Not Allowed")
-                    alertDialogBuilder.setPositiveButton("DO IT") { dialog , which ->
-                        intent =
-                            Intent(Settings.ACTION_QUICK_LAUNCH_SETTINGS).apply {
-                                putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
-                            }
-                        startActivity(intent)
-                    }
-                    alertDialogBuilder.show()
-                }
-            }
-        }
-    }
+    val TAG = "MainActivityBluetooth"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Permission requests
+        // Get shared preferences
+        val sp = getSharedPreferences("preferences", MODE_PRIVATE)
+
+        // Requests permissions whenever the app starts.
         requestPermissions()
 
-        // Get shared preferences
-        val sp = getSharedPreferences("chosen_devices", MODE_PRIVATE)
+        // Getting paired devices
+        val mDeviceGroup = findViewById<LinearLayout>(R.id.device_group)
+        val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        var startBluetoothForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        }
 
-        val mSpotifyAuthorizeButton = findViewById<Button>(R.id.authorize_spotify)
-        mSpotifyAuthorizeButton.setOnClickListener {
+        fun checkBluetooth () {
+            requestPermissions()
+            if (mBluetoothAdapter != null)
+                if (mBluetoothAdapter.isEnabled) {
+                    mDeviceGroup.removeAllViews()
+                    for (i in mBluetoothAdapter.bondedDevices) {
+                        val mDeviceBox = CheckBox(this)
+                        mDeviceBox.id = View.generateViewId()
+                        mDeviceBox.text = i.name
+                        if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(i.address)) {
+                            mDeviceBox.isChecked = true
+                        }
+                        mDeviceBox.setOnClickListener {
+                            if (mDeviceBox.isChecked()) {
+                                with(sp.edit()) {
+                                    val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
+                                    newSet?.add(i.address)
+                                    Log.v(TAG, newSet.toString())
+                                    putStringSet("mac-list", newSet)
+                                    apply()
+                                }
+                            } else {
+                                with (sp.edit()) {
+                                    val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
+                                    newSet?.remove(i.address)
+                                    Log.v(TAG, newSet.toString())
+                                    putStringSet("mac-list", newSet)
+                                    apply()
+                                }
+                            }
+                        }
+                        mDeviceGroup.addView(mDeviceBox)
+                    }
+                } else {
+                    val alertDialogBuilder = AlertDialog.Builder(this)
+                    alertDialogBuilder.setTitle("Bluetooth Off")
+                    alertDialogBuilder.setMessage("Please turn on Bluetooth")
+                    alertDialogBuilder.setCancelable(false)
+                    alertDialogBuilder.setPositiveButton("Turn on") { dialog , which ->
+                        val bluetoothManager: BluetoothManager = getSystemService(BluetoothManager::class.java)
+                        val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.getAdapter()
+                        if (bluetoothAdapter == null) {
+                            // Device doesn't support Bluetooth
+                        } else {
+                            if (!bluetoothAdapter.isEnabled) {
+                                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                                startBluetoothForResult.launch(enableBtIntent)
+                            }
+                        }
+                    }
+                    alertDialogBuilder.show()
+                }
+        }
+
+        startBluetoothForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                checkBluetooth()
+        }
+
+        // Checks and sets automatic launch approval
+        fun setAutomaticLaunchSettings(launchForResult: ActivityResultLauncher<Intent>) {
+            var intent = packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                val componentName = intent.component
+                val state = packageManager.getComponentEnabledSetting(componentName!!)
+                if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    // Automatic launch is already authorized
+                } else {
+                    // Automatic launch is unauthorized
+                    val alertDialogBuilder = AlertDialog.Builder(this)
+                    alertDialogBuilder.setCancelable(false)
+                    alertDialogBuilder.setMessage("Please turn on quick/automatic launch")
+                    val resolveInfo = packageManager.resolveActivity(Intent(Settings.ACTION_QUICK_LAUNCH_SETTINGS), 0)
+                    if (resolveInfo == null) {
+                        alertDialogBuilder.setTitle("Automatic Launch Not Allowed")
+                        alertDialogBuilder.setPositiveButton("DO IT") { dialog , which ->
+                            intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            Log.d(TAG, "Launching automatic launch settings")
+                            launchForResult.launch(intent)
+                        }
+                        alertDialogBuilder.show()
+                    } else {
+                        alertDialogBuilder.setTitle("Quick Launch Not Allowed")
+                        alertDialogBuilder.setPositiveButton("DO IT") { dialog , which ->
+                            intent =
+                                Intent(Settings.ACTION_QUICK_LAUNCH_SETTINGS).apply {
+                                    putExtra(Intent.EXTRA_PACKAGE_NAME, packageName)
+                                }
+                            Log.d(TAG, "Launching automatic launch settings")
+                            launchForResult.launch(intent)
+                        }
+                        alertDialogBuilder.show()
+                    }
+                }
+            }
+        }
+
+        // Checks and sets battery optimizations
+        fun setBatteryOptimizations(batteryOptimizationsForResult: ActivityResultLauncher<Intent>) {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                checkBluetooth()
+            } else {
+                // Give an alert to prompt user to set battery optimizations
+                val alertDialogBuilder = AlertDialog.Builder(this)
+                alertDialogBuilder.setCancelable(false)
+                alertDialogBuilder.setTitle("Battery Optimizations Not Set")
+                alertDialogBuilder.setMessage("Please turn off Battery Optimizations")
+                alertDialogBuilder.setPositiveButton("DO IT") { dialog , which ->
+                    val intent =
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                    batteryOptimizationsForResult.launch(intent)
+                }
+                alertDialogBuilder.show()
+            }
+        }
+
+        val batteryOptimizationsForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            checkBluetooth()
+        }
+
+        val autoLaunchForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            setBatteryOptimizations(batteryOptimizationsForResult)
+        }
+
+        val authorizationForResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                result : ActivityResult ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val intent = result.data
+                val response = AuthorizationClient.getResponse(result.resultCode, intent)
+                when (response.type) {
+                    AuthorizationResponse.Type.TOKEN -> {
+                        Log.v(TAG, response.accessToken.toString())
+                        Toast.makeText(this, response.accessToken.toString(), Toast.LENGTH_LONG).show()
+                        setAutomaticLaunchSettings(autoLaunchForResult)
+                        sp.edit().putBoolean("spotify-authorized", true).apply()
+                    }
+                    AuthorizationResponse.Type.ERROR -> {
+                        Log.v(TAG, response.error.toString())
+                        setAutomaticLaunchSettings(autoLaunchForResult)
+                        Toast.makeText(this, response.error.toString(), Toast.LENGTH_LONG).show()
+                    }
+                    else -> {
+                        Log.v(TAG, "unexpected on authorizationForResult")
+                    }
+                }
+            }
+        }
+
+        val mTroubleShootButton = findViewById<Button>(R.id.troubleshoot_button)
+        mTroubleShootButton.setOnClickListener {
             val builder = AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI)
                 .setScopes(Array(1) {"user-read-private"})
             val request = builder.build()
-            AuthorizationClient.openLoginActivity(this, REQUEST_CODE, request)
+            val intent: Intent = AuthorizationClient.createLoginActivityIntent(this, request)
+            authorizationForResult.launch(intent)
         }
 
         // Set Spotify to debug mode and authorize
@@ -168,6 +270,14 @@ class MainActivity : AppCompatActivity() {
             sp.edit().putBoolean("start_favorites", false).apply()
             sp.edit().putBoolean("start_player_state", true).apply()
             sp.edit().putBoolean("shuffle", false).apply()
+
+            val builder = AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI)
+                .setScopes(Array(1) {"user-read-private"})
+            val request = builder.build()
+            val intent: Intent = AuthorizationClient.createLoginActivityIntent(this, request)
+            authorizationForResult.launch(intent)
+        } else {
+            checkBluetooth()
         }
 
         mStartLink.setText(sp.getString("start_link", "put spotify url"))
@@ -198,164 +308,11 @@ class MainActivity : AppCompatActivity() {
             mShuffleBox.isChecked = sp.getBoolean("shuffle", false)
         }
 
-
-
         // Set the start link (initialized above)
         mLinkButton.setOnClickListener {
             setStartLink(mStartLink.text.toString())
         }
-
-
-        // Set autoamatic launch settings
-        if (!sp.getBoolean("settingsSet", false)) {
-            setAutomaticLaunchSettings()
-        }
-
-        // Getting paired devices
-        val mDeviceGroup = findViewById<LinearLayout>(R.id.device_group)
-        val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-
-        if (mBluetoothAdapter != null)
-        if (mBluetoothAdapter.isEnabled) {
-            for (i in mBluetoothAdapter.bondedDevices) {
-                val mDevice = CheckBox(this)
-                mDevice.id = View.generateViewId()
-                mDevice.text = i.name
-                if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(i.address)) {
-                    mDevice.isChecked = true
-                }
-                mDevice.setOnClickListener {
-                    if (mDevice.isChecked()) {
-                        with(sp.edit()) {
-                            val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
-                            newSet?.add(i.address)
-                            Log.v(TAG, newSet.toString())
-                            putStringSet("mac-list", newSet)
-                            apply()
-                        }
-                    } else {
-                        with (sp.edit()) {
-                            val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
-                            newSet?.remove(i.address)
-                            Log.v(TAG, newSet.toString())
-                            putStringSet("mac-list", newSet)
-                            apply()
-                        }
-                    }
-                }
-                mDeviceGroup.addView(mDevice)
-            }
-        } else {
-            val alertDialogBuilder = AlertDialog.Builder(this)
-            alertDialogBuilder.setTitle("Bluetooth Off")
-            alertDialogBuilder.setMessage("Please turn on Bluetooth")
-            alertDialogBuilder.setPositiveButton("Turn on") { dialog , which ->
-                val bluetoothManager: BluetoothManager = getSystemService(BluetoothManager::class.java)
-                val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.getAdapter()
-                if (bluetoothAdapter == null) {
-                    // Device doesn't support Bluetooth
-                } else {
-                    if (bluetoothAdapter?.isEnabled == false) {
-                        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                        startActivityForResult(enableBtIntent, REQUEST_CODE + 1)
-                    }
-                }
-            }
-            alertDialogBuilder.show()
-        }
     }
-
-
-    override fun onStart() {
-        super.onStart()
-
-        // Get shared preferences
-        val sp = getSharedPreferences("chosen_device", MODE_PRIVATE)
-
-        // Authorize Spotify
-        if (sp.getBoolean("spotify-authorized", false)) {
-            val builder = AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI)
-                .setScopes(Array(1) {"user-read-private"})
-            val request = builder.build()
-            AuthorizationClient.openLoginActivity(this, REQUEST_CODE, request)
-        }
-    }
-
-
-    override fun onResume() {
-        super.onResume()
-        val sp = getSharedPreferences("chosen_devices", MODE_PRIVATE)
-        if (!sp.getBoolean("settingsSet", false)) {
-            setBatteryOptimizations()
-            with(sp.edit()) {
-                putBoolean("settingsSet", true)
-                apply()
-            }
-        }
-    }
-
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        Log.v(TAG, "onActivityResult with result code: " + requestCode.toString())
-        // Get shared preferences
-        val sp = getSharedPreferences("chosen_device", MODE_PRIVATE)
-
-        if (requestCode == REQUEST_CODE + 1) {
-            val mDeviceGroup = findViewById<LinearLayout>(R.id.device_group)
-            val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-
-            if (mBluetoothAdapter != null)
-                if (mBluetoothAdapter.isEnabled) {
-                    for (i in mBluetoothAdapter.bondedDevices) {
-                        val mDevice = CheckBox(this)
-                        mDevice.id = View.generateViewId()
-                        mDevice.text = i.name
-                        if (sp.getStringSet("mac-list", mutableSetOf())!!.contains(i.address)) {
-                            mDevice.isChecked = true
-                        }
-                        mDevice.setOnClickListener {
-                            if (mDevice.isChecked()) {
-                                with(sp.edit()) {
-                                    val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
-                                    newSet?.add(i.address)
-                                    Log.v(TAG, newSet.toString())
-                                    putStringSet("mac-list", newSet)
-                                    apply()
-                                }
-                            } else {
-                                with (sp.edit()) {
-                                    val newSet = sp.getStringSet("mac-list", mutableSetOf())?.toMutableSet()
-                                    newSet?.remove(i.address)
-                                    Log.v(TAG, newSet.toString())
-                                    putStringSet("mac-list", newSet)
-                                    apply()
-                                }
-                            }
-                        }
-                        mDeviceGroup.addView(mDevice)
-                    }
-                }
-        } else if (requestCode == REQUEST_CODE) {
-            val response = AuthorizationClient.getResponse(resultCode, data)
-            when (response.type) {
-                AuthorizationResponse.Type.TOKEN -> {
-                    Log.v(TAG, response.accessToken.toString())
-                    Toast.makeText(this, response.accessToken.toString(), Toast.LENGTH_LONG).show()
-                    sp.edit().putBoolean("spotify-authorized", true).apply()
-                }
-                AuthorizationResponse.Type.ERROR -> {
-                    Log.v(TAG, response.error.toString())
-                    Toast.makeText(this, response.error.toString(), Toast.LENGTH_LONG).show()
-                }
-                else -> {
-                    Log.v(TAG, "unexpected on onActivityResult")
-                }
-            }
-        }
-    }
-
-
 
     override fun onDestroy() {
         super.onDestroy()
@@ -369,7 +326,7 @@ class MainActivity : AppCompatActivity() {
         ActivityCompat.checkSelfPermission(this, Manifest.permission.INTERNET) == PackageManager.PERMISSION_GRANTED
 
     private fun requestPermissions() {
-        var permissionsToRequest =  mutableListOf<String>()
+        val permissionsToRequest =  mutableListOf<String>()
         if (!hasBluetoothConnectionPermission()) {
             permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
@@ -392,7 +349,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == 0 && grantResults.isNotEmpty()) {
             for (i in grantResults.indices) {
                 if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
-                    Log.d("Bluetooth", "permissions: ${permissions[i]}")
+                    Log.d(TAG, "permissions: ${permissions[i]}")
                 }
             }
         }
