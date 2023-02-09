@@ -119,7 +119,8 @@
         tools:layout_editor_absoluteY="180dp"
         android:text="@string/ideal_delay"
         app:layout_constraintTop_toBottomOf="@id/edit_delay"
-        app:layout_constraintStart_toStartOf="@id/edit_delay"/>
+        app:layout_constraintStart_toStartOf="@id/edit_delay"
+        app:layout_constraintEnd_toEndOf="@id/edit_delay"/>
 
     <Button
         android:id="@+id/delay_btn"
