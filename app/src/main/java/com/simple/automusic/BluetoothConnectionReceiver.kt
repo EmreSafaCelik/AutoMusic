@@ -11,6 +11,8 @@ import com.spotify.android.appremote.api.ConnectionParams
 import com.spotify.android.appremote.api.Connector
 import com.spotify.android.appremote.api.SpotifyAppRemote
 
+var ran = false
+
 class BluetoothConnectionReceiver : BroadcastReceiver() {
     val TAG = "BluetoothConnectionReceiver"
 
@@ -37,7 +39,10 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
 
                     // Play set audio
                     val mediaPlayer = MediaPlayer.create(context, R.raw.jarvis_merhaba)
-                    mediaPlayer.start()
+                    if (!ran) {
+                        mediaPlayer.start()
+                        ran = true
+                    }
 
                     // Connect to spotify and play as chosen by user
                     SpotifyAppRemote.connect(context,
@@ -66,6 +71,8 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                                 } else {
                                     mPlayerApi?.play(sp.getString("start_link", "spotify:user:anonymised:collection"))
                                 }
+
+                                ran = false;
                             }
 
                             // Something went wrong when attempting to connect! Handle errors here
